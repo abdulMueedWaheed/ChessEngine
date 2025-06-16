@@ -1,51 +1,92 @@
-from pymongo import MongoClient
-import hashlib
+import json
+import os
+from typing import Tuple, Optional
 
-class GameStateDatabase:
-    def __init__(self, db_name='chess_db', collection_name='game_states'):
-        # Connect to MongoDB
-        self.client = MongoClient('mongodb://localhost:27017/')
-        self.db = self.client[db_name]
-        self.collection = self.db[collection_name]
+class BestMoveFinder:
+    def __init__(self, json_file: str):
+        self.json_file = json_file
+        self.data = self.load_data()
 
-    def generate_state_hash(self, board_state):
-        """
-        Generate a hash for the given board state to use as a unique identifier.
-        This helps in reducing the size of the data stored and quickly checking game states.
-        """
-        # You could use a more sophisticated method to serialize the board state if needed
-        return hashlib.sha256(board_state.encode()).hexdigest()
-
-    def store_game_state(self, board_state, best_move):
-        """
-        Check if the board state is already stored. If not, store the state and the best move.
-        """
-        state_hash = self.generate_state_hash(board_state)
-        
-        # Check if the game state already exists
-        existing_state = self.collection.find_one({"gameState": state_hash})
-        
-        if existing_state:
-            # If the state exists, return the best move
-            return existing_state["bestMove"]
+    def load_data(self) -> dict:
+        if os.path.exists(self.json_file):
+            try:
+                with open(self.json_file, "r") as f:
+                    content = f.read().strip()
+                    if content:  # Ensure content is not empty
+                        return json.loads(content)
+                    else:
+                        print(f"Warning: {self.json_file} is empty.")
+                        return {}
+            except json.JSONDecodeError:
+                print(f"Error: Failed to decode JSON from {self.json_file}.")
+                return {}
         else:
-            # If the state doesn't exist, store the new game state with the best move
-            self.collection.insert_one({
-                "gameState": state_hash,
-                "bestMove": best_move
-            })
-            return best_move
+            print(f"Warning: {self.json_file} not found.")
+            return {}
 
-    def get_best_move(self, board_state):
-        """
-        Retrieve the best move for a given board state.
-        """
-        state_hash = self.generate_state_hash(board_state)
-        
-        # Find the game state in the database
-        existing_state = self.collection.find_one({"gameState": state_hash})
-        
-        if existing_state:
-            return existing_state["bestMove"]
+    def save_data(self):
+        with open(self.json_file, "w") as f:
+            json.dump(self.data, f, indent=4)
+
+    def board_to_fen(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int]) -> str:
+        fen = ""
+        for row in board:
+            empty_count = 0
+            for square in row:
+                if square == "--":
+                    empty_count += 1
+                else:
+                    if empty_count > 0:
+                        fen += str(empty_count)
+                        empty_count = 0
+                    fen += square[1].upper() if square[0] == "w" else square[1].lower()
+            if empty_count > 0:
+                fen += str(empty_count)
+            fen += "/"
+        fen = fen[:-1]  # Remove the trailing slash
+
+        fen += " w" if whiteToMove else " b"
+
+        castle = ""
+        castle += "K" if castleRights.whiteKingSide else ""
+        castle += "Q" if castleRights.whiteQueenSide else ""
+        castle += "k" if castleRights.blackKingSide else ""
+        castle += "q" if castleRights.blackQueenSide else ""
+        fen += f" {castle if castle else '-'}"
+
+        if enPassantTargetSquare:
+            enPassant = chr(enPassantTargetSquare[1] + 97) + str(8 - enPassantTargetSquare[0])
+            fen += f" {enPassant}"
         else:
-            return None  # State not found, no best move available
+            fen += " -"
+
+        fen += " 0 1"  # Placeholder for half-move and full-move counters
+        return fen
+
+    def fen_to_custom_notation(self, startSq: Tuple[int, int], endSq: Tuple[int, int], pieceMoved: str) -> str:
+        start = chr(startSq[1] + 97) + str(8 - startSq[0])
+        end = chr(endSq[1] + 97) + str(8 - endSq[0])
+        return f"{pieceMoved}:{start}->{end}"
+
+    def custom_notation_to_fen_move(self, move: str) -> Tuple[Tuple[int, int], Tuple[int, int], str]:
+        pieceMoved, squares = move.split(":")
+        start, end = squares.split("->")
+        startSq = (8 - int(start[1]), ord(start[0]) - 97)
+        endSq = (8 - int(end[1]), ord(end[0]) - 97)
+        return startSq, endSq, pieceMoved
+
+    def add_best_move(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int], startSq: Tuple[int, int], endSq: Tuple[int, int], pieceMoved: str):
+        fen = self.board_to_fen(board, whiteToMove, castleRights, enPassantTargetSquare)
+        move_notation = self.fen_to_custom_notation(startSq, endSq, pieceMoved)
+        
+        # Append to the list of moves for that FEN, instead of overwriting
+        if fen in self.data:
+            self.data[fen]["best_moves"].append(move_notation)
+        else:
+            self.data[fen] = {"best_moves": [move_notation]}
+        
+        self.save_data()
+
+    def get_best_move(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int]) -> Optional[dict]:
+        fen = self.board_to_fen(board, whiteToMove, castleRights, enPassantTargetSquare)
+        return self.data.get(fen, None)

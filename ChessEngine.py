@@ -1,3 +1,43 @@
+"""
+ChessEngine.py
+
+This module contains the core logic for the chess engine, including the representation of moves, game state, and the rules of chess. It handles move generation, validation, and special rules such as castling, en passant, and pawn promotion.
+
+Classes:
+    Move: Represents a chess move, including its start and end positions, the piece moved, and any special move types.
+    GameState: Represents the current state of the chess game, including the board configuration, move history, and game status.
+    CastleRights: Represents the castling rights for both players.
+
+Functions:
+    __init__: Initializes the Move, GameState, and CastleRights classes.
+    getChessNotation: Generates the algebraic notation for a move.
+    getRankFile: Converts row and column indices to chess rank-file notation.
+    __eq__: Checks equality between two Move objects based on their unique move ID.
+    findSimilarPieceMoves: Finds all pieces of the same type that can move to the same destination square.
+    makeMove: Executes a move on the board and updates the game state.
+    undoMove: Reverts the last move and restores the previous game state.
+    updateCastleRights: Updates the castling rights based on the given move.
+    updateCastleRightsUndo: Restores the castling rights to their state before the last move.
+    validMoveIfCheck: Filters out moves that leave the king in check.
+    validMoveIfNotCheck: Generates a list of moves without considering checks.
+    checkForPinsandChecks: Checks if the king is in check and finds the squares that would block or capture it.
+    inCheck: Checks if the current player's king is in check.
+    isSquareAttacked: Checks if a square is attacked by any opponent piece.
+    pawnValidMoves: Generates valid moves for pawns.
+    isEnPassantSafe: Checks if performing en passant leaves the king in check.
+    rookValidMoves: Generates valid moves for rooks.
+    knightValidMoves: Generates valid moves for knights.
+    bishopValidMoves: Generates valid moves for bishops.
+    queenValidMoves: Generates valid moves for queens.
+    kingValidMoves: Generates valid moves for the king.
+    getCastlingMoves: Generates castling moves for the king.
+    kingSideCastling: Generates king-side castling moves.
+    queenSideCastling: Generates queen-side castling moves.
+"""
+
+import json
+import os
+from typing import Tuple, Optional
 import pygame
 
 class Move:
@@ -116,7 +156,6 @@ class Move:
 		return sameTypeMoves
 
 
-		
 
 class GameState():
 	def __init__(self):
@@ -172,6 +211,7 @@ class GameState():
 		self.gameOver = False
 		self.checkmate = False
 		self.stalemate = False
+		self.threeMoveRepetition = False
 
 
 
@@ -226,42 +266,51 @@ class GameState():
 
 
 	def undoMove(self):
+		"""
+		Undo the last move, restoring the board and state to the previous turn.
+		"""
 		if len(self.moveLog) > 0:
 			move = self.moveLog.pop()
+
+			# Restore the board
 			self.board[move.startRow][move.startCol] = move.pieceMoved
 			self.board[move.endRow][move.endCol] = move.pieceCaptured
+
+			# Update turn
 			self.whiteToMove = not self.whiteToMove
 
+			# Update king's location
 			if move.pieceMoved == "wK":
 				self.whiteKingLocation = (move.startRow, move.startCol)
 			elif move.pieceMoved == "bK":
 				self.blackKingLocation = (move.startRow, move.startCol)
-			
+
+			# Handle en passant undo
 			if move.isEnPassantMove:
-				self.board[move.endRow][move.endCol] = "--"
-				self.board[move.startRow][move.startCol] = move.pieceMoved
+				self.board[move.endRow][move.endCol] = "--"  # Remove pawn from the target square
 				captureRow = move.endRow + (1 if move.pieceMoved[0] == 'w' else -1)
-				self.board[captureRow][move.endCol] = move.pieceCaptured
-				self.enPassantTargetSquare = (move.endRow, move.endCol)
-			
-			self.enPassantTargetSquareLog.pop()
+				self.board[captureRow][move.endCol] = move.pieceCaptured  # Restore captured pawn
+
+			# Restore en passant target square
 			if len(self.enPassantTargetSquareLog) > 0:
-				self.enPassantTargetSquare = self.enPassantTargetSquareLog[-1]
+				self.enPassantTargetSquareLog.pop()
+				self.enPassantTargetSquare = self.enPassantTargetSquareLog[-1] if len(self.enPassantTargetSquareLog) > 0 else ()
 			else:
 				self.enPassantTargetSquare = ()
-			
-			
+
+			# Handle castling undo
 			if move.isCastleMove:
 				if move.endCol - move.startCol == 2:  # Kingside castling
-					self.board[move.endRow][move.endCol + 1] = self.board[move.endRow][move.endCol - 1]  # Move the rook back
-					self.board[move.endRow][move.endCol - 1] = "--"  # Clear the rook's new square
+					self.board[move.endRow][move.endCol + 1] = self.board[move.endRow][move.endCol - 1]  # Restore rook
+					self.board[move.endRow][move.endCol - 1] = "--"  # Clear the rook's square
 				else:  # Queenside castling
-					self.board[move.endRow][move.endCol - 2] = self.board[move.endRow][move.endCol + 1]  # Move the rook back
-					self.board[move.endRow][move.endCol + 1] = "--"  # Clear the rook's new square
-			
+					self.board[move.endRow][move.endCol - 2] = self.board[move.endRow][move.endCol + 1]  # Restore rook
+					self.board[move.endRow][move.endCol + 1] = "--"  # Clear the rook's square
+
+			# Restore castle rights
 			self.updateCastleRightsUndo()
-			
-			
+
+			# Reset game end states
 			self.checkmate = False
 			self.stalemate = False
 	
@@ -401,8 +450,7 @@ class GameState():
 				piece = self.board[row][col]
 				
 				if piece != "--" and piece[0] == ("w" if self.whiteToMove else "b"):
-					pieceType = piece[1]
-					moves.extend(self.moveFunction[pieceType](row, col))
+					moves.extend(self.moveFunction[piece[1]](row, col))
 		return moves
 
 	'''
@@ -541,10 +589,16 @@ class GameState():
 		return False
 
 
+	def threeMoveRule(self):
+		if len(self.moveLog) >= 6:
+			if self.moveLog[-1] == self.moveLog[-5] and self.moveLog[-2] == self.moveLog[-6]:
+				return True
+		return False
+
 	'''
 	Valid Moves for all types of pieces:
 	'''
-	def pawnValidMoves(self, row: int, col: int):
+	def pawnValidMoves(self, row: int, col: int) -> list[Move]:
 		piecePinned = False
 		pinDirection = ()
 
@@ -620,7 +674,7 @@ class GameState():
 		return isSafe
 
 
-	def rookValidMoves(self, row: int, col: int):
+	def rookValidMoves(self, row: int, col: int) -> list[Move]:
 		moves = []
 		directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Up, Down, Left, Right
 		
@@ -642,7 +696,7 @@ class GameState():
 					break
 		
 		return moves
-	def knightValidMoves(self, row: int, col: int):
+	def knightValidMoves(self, row: int, col: int) -> list[Move]:
 		moves = []
 		knightMoves = [
 			(-2, -1), (-1, -2), (1, -2), (2, -1),  # Up-Left and Up-Right
@@ -660,7 +714,7 @@ class GameState():
 					moves.append(Move((row, col), (endRow, endCol), self.board))
 	
 		return moves
-	def bishopValidMoves(self, row: int, col: int):
+	def bishopValidMoves(self, row: int, col: int) -> list[Move]:
 		moves = []
 		directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Diagonal directions: top-left, top-right, bottom-left, bottom-right
 	
@@ -685,7 +739,7 @@ class GameState():
 					break
 	
 		return moves
-	def queenValidMoves(self, row: int, col: int):
+	def queenValidMoves(self, row: int, col: int) -> list[Move]:
 		moves = []
 		# Combine rook and bishop moves
 		
@@ -712,7 +766,7 @@ class GameState():
 					break
 	
 		return moves
-	def kingValidMoves(self, kingRow: int, kingCol: int):
+	def kingValidMoves(self, kingRow: int, kingCol: int) -> list[Move]:
 		validMoves = []
 		kingMoves = [
 			(-1, -1), (-1, 0), (-1, 1),
@@ -774,9 +828,7 @@ class GameState():
 				moves.append(Move((kingRow, kingCol), (kingRow, kingCol - 2), self.board, isCastleMove = True))
 
 
-'''
-This shit is so fucking comlex that I have to make a separate fucking class for it.
-'''
+
 class CastleRights():
 	def __init__(self, wks, wqs, bks, bqs):
 		self.whiteKingSide = wks
@@ -789,3 +841,94 @@ class CastleRights():
 		print(f"White Queen Side: {self.whiteQueenSide}")
 		print(f"Black King Side: {self.blackKingSide}")
 		print(f"Black Queen Side: {self.blackQueenSide}")
+
+
+class BestMoveFinder:
+    def __init__(self, json_file: str):
+        self.json_file = json_file
+        self.data = self.load_data()
+
+    def load_data(self) -> dict:
+        if os.path.exists(self.json_file):
+            try:
+                with open(self.json_file, "r") as f:
+                    content = f.read().strip()
+                    if content:  # Ensure content is not empty
+                        return json.loads(content)
+                    else:
+                        print(f"Warning: {self.json_file} is empty.")
+                        return {}
+            except json.JSONDecodeError:
+                print(f"Error: Failed to decode JSON from {self.json_file}.")
+                return {}
+        else:
+            print(f"Warning: {self.json_file} not found.")
+            return {}
+
+    def save_data(self):
+        with open(self.json_file, "w") as f:
+            json.dump(self.data, f, indent=4)
+
+    def board_to_fen(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int]) -> str:
+        fen = ""
+        for row in board:
+            empty_count = 0
+            for square in row:
+                if square == "--":
+                    empty_count += 1
+                else:
+                    if empty_count > 0:
+                        fen += str(empty_count)
+                        empty_count = 0
+                    fen += square[1].upper() if square[0] == "w" else square[1].lower()
+            if empty_count > 0:
+                fen += str(empty_count)
+            fen += "/"
+        fen = fen[:-1]  # Remove the trailing slash
+
+        fen += " w" if whiteToMove else " b"
+
+        castle = ""
+        castle += "K" if castleRights.whiteKingSide else ""
+        castle += "Q" if castleRights.whiteQueenSide else ""
+        castle += "k" if castleRights.blackKingSide else ""
+        castle += "q" if castleRights.blackQueenSide else ""
+        fen += f" {castle if castle else '-'}"
+
+        if enPassantTargetSquare:
+            enPassant = chr(enPassantTargetSquare[1] + 97) + str(8 - enPassantTargetSquare[0])
+            fen += f" {enPassant}"
+        else:
+            fen += " -"
+
+        fen += " 0 1"  # Placeholder for half-move and full-move counters
+        return fen
+
+    def fen_to_custom_notation(self, startSq: Tuple[int, int], endSq: Tuple[int, int], pieceMoved: str) -> str:
+        start = chr(startSq[1] + 97) + str(8 - startSq[0])
+        end = chr(endSq[1] + 97) + str(8 - endSq[0])
+        return f"{pieceMoved}:{start}->{end}"
+
+    def custom_notation_to_fen_move(self, move: str) -> Tuple[Tuple[int, int], Tuple[int, int], str]:
+        pieceMoved, squares = move.split(":")
+        start, end = squares.split("->")
+        startSq = (8 - int(start[1]), ord(start[0]) - 97)
+        endSq = (8 - int(end[1]), ord(end[0]) - 97)
+        return startSq, endSq, pieceMoved
+
+    def add_best_move(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int], startSq: Tuple[int, int], endSq: Tuple[int, int], pieceMoved: str):
+        fen = self.board_to_fen(board, whiteToMove, castleRights, enPassantTargetSquare)
+        move_notation = self.fen_to_custom_notation(startSq, endSq, pieceMoved)
+        
+        # Append to the list of moves for that FEN, instead of overwriting
+        if fen in self.data:
+            self.data[fen]["best_moves"].append(move_notation)
+        else:
+            self.data[fen] = {"best_moves": [move_notation]}
+        
+        self.save_data()
+
+    def get_best_move(self, board: list, whiteToMove: bool, castleRights, enPassantTargetSquare: Tuple[int, int]) -> Optional[dict]:
+        fen = self.board_to_fen(board, whiteToMove, castleRights, enPassantTargetSquare)
+        return self.data.get(fen, None)
+

@@ -1,0 +1,55 @@
+{
+    "rnb1kbnr/ppp1pppp/8/8/4q3/8/PP1PQPPP/RNB1KBNR b KQ - 0 1": {
+        "best_move": "bQ:e4->c2"
+    },
+    "rnb1k1nr/ppp2ppp/3p4/4P3/1bB1P3/2N2N2/PPP1QPqP/R1B1K1R1 b Q - 0 1": {
+        "best_move": "bQ:g2->h3"
+    },
+    "rnb1kbnr/pppp1ppp/5q2/8/3N4/2N5/PPP1PPPP/R1BQKB1R b KQ - 0 1": {
+        "best_moves": [
+            "bp:a7->a6"
+        ]
+    },
+    "rnbqkbnr/pppppppp/8/8/6P1/8/PPPPPP1P/RNBQKBNR b KQk g3 0 1": {
+        "best_moves": [
+            "bp:d7->d5"
+        ]
+    },
+    "rnbqkbnr/pppppppp/8/8/8/2N5/PPPPPPPP/R1BQKBNR b KQk - 0 1": {
+        "best_moves": [
+            "bp:e7->e5"
+        ]
+    },
+    "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQk - 0 1": {
+        "best_moves": [
+            "bp:d7->d5",
+            "bp:d7->d5",
+            "bp:d7->d5"
+        ]
+    },
+    "rnbqkbnr/pppp1ppp/8/4p3/8/2N2N2/PPPPPPPP/R1BQKB1R b KQ - 0 1": {
+        "best_moves": [
+            "bQ:d8->f6"
+        ]
+    },
+    "rnb1kbnr/ppp1pppp/8/8/3q4/2N1P3/PPPP1PPP/R1BQKB1R b KQ - 0 1": {
+        "best_moves": [
+            "bQ:d4->c5"
+        ]
+    },
+    "rnb1k2r/pppp1pp1/7p/b2qp3/3PP3/2P1P1P1/PP1N3P/R1BQKB1R b KQ - 0 1": {
+        "best_moves": [
+            "bQ:d5->d6"
+        ]
+    },
+    "r1bqkbnr/ppNppppp/n7/8/8/5N2/PPPPPPPP/R1BQKB1R b KQk - 0 1": {
+        "best_moves": [
+            "bQ:d8->c7"
+        ]
+    },
+    "rnbqk1nr/pppp1ppp/8/4p3/1b1P4/4P3/PPP1KPPP/RNBQ1BNR b - - 0 1": {
+        "best_moves": [
+            "bp:e5->e4"
+        ]
+    }
+}
